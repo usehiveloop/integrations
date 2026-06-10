@@ -15,6 +15,7 @@ const {
     MANIFEST_PATH = path.join(REPO_ROOT, 'managed-manifest.json'),
     NANGO_REPO_PATH = REPO_ROOT,
     MANAGED_RELEASES_REPO_PATH = path.join(REPO_ROOT, 'managed-image-releases'),
+    NANGO_SOURCE_REPO = 'NangoHQ/nango',
     TARGET_REPO = 'NangoHQ/managed-image-releases',
     GH_HOST = 'github.com',
     ACT
@@ -121,18 +122,13 @@ function buildGitHubComparisonUrl(fromCommit, toCommit, owner, repo) {
     return `https://github.com/${owner}/${repo}/compare/${fromCommit}...${toCommit}`;
 }
 
-function getNangoGitHubRepo(cwd = NANGO_REPO_PATH) {
-    try {
-        const remoteUrl = runSilent('git', ['remote', 'get-url', 'origin'], { cwd }).trim();
-        const match = remoteUrl.match(/github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?$/);
-        if (match) {
-            return { owner: match[1], repo: match[2] };
-        }
-    } catch {
-        // Fall back to the canonical Nango repository when the checkout is unavailable.
+function getNangoGitHubRepo(sourceRepo = NANGO_SOURCE_REPO) {
+    const match = sourceRepo.match(/^([^/]+)\/([^/]+)$/);
+    if (match) {
+        return { owner: match[1], repo: match[2] };
     }
 
-    return { owner: 'NangoHQ', repo: 'nango' };
+    throw new Error(`NANGO_SOURCE_REPO must be in owner/repo format, got: ${sourceRepo}`);
 }
 
 function resolveComparisonUrl(manifestComparisonUrl, prevCommit, currentCommitHash) {
