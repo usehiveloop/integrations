@@ -3,9 +3,9 @@ import { useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet';
 import { useNavigate } from 'react-router-dom';
 
+import { Button, InputGroup, InputGroupInput } from '@nangohq/design-system';
+
 import { Alert, AlertDescription } from '@/components/ui/Alert';
-import { Button } from '@/components/ui/Button';
-import { InputGroup, InputGroupInput } from '@/components/ui/InputGroup';
 import { StyledLink } from '@/components/ui/StyledLink';
 import { useManagedEmailVerification, useManagedEmailVerificationAPI } from '@/hooks/useAuth';
 import DefaultLayout from '@/layout/DefaultLayout';
@@ -61,7 +61,7 @@ export const ManagedEmailVerification: React.FC = () => {
             </Helmet>
 
             <div className="flex flex-col items-center gap-3">
-                <h2 className="text-title-group text-text-primary">Verify your email</h2>
+                <h2 className="text-title-group text-text-strong">Verify your email</h2>
 
                 {serverErrorMessage && (
                     <Alert variant="error">
@@ -76,7 +76,7 @@ export const ManagedEmailVerification: React.FC = () => {
             </div>
 
             <form onSubmit={handleSubmit} className="flex flex-col gap-5 w-full">
-                <InputGroup className="h-11">
+                <InputGroup>
                     <InputGroupInput
                         value={code}
                         onChange={(event) => setCode(event.target.value)}
@@ -87,12 +87,12 @@ export const ManagedEmailVerification: React.FC = () => {
                     />
                 </InputGroup>
 
-                <Button type="submit" size="lg" className="w-full" loading={isPending} disabled={code.trim().length < 6}>
+                <Button type="submit" size="lg" loading={isPending} disabled={code.trim().length < 6}>
                     Verify and continue
                 </Button>
             </form>
 
-            <span className="text-body-medium-regular text-text-tertiary text-center">
+            <span className="text-body-medium-regular text-text-muted text-center">
                 Didn&apos;t get the code? <StyledLink to="/signin">Start the Google sign-in flow again.</StyledLink>
             </span>
         </DefaultLayout>

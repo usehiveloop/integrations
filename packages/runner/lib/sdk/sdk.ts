@@ -1,10 +1,11 @@
 import { Nango } from '@nangohq/node';
-import { NangoActionBase, NangoSyncBase, executeUncontrolledFetch } from '@nangohq/runner-sdk';
-import { ProxyRequest, getProxyConfiguration } from '@nangohq/shared';
+import { executeUncontrolledFetch, NangoActionBase, NangoSyncBase } from '@nangohq/runner-sdk';
+import { enforceProxyOutboundUrlPolicy, getProxyConfiguration, ProxyError, ProxyRequest, resolvePolicyForRunner } from '@nangohq/shared';
 import {
-    MAX_LOG_PAYLOAD,
     getCheckpointKey,
+    isBaseUrlOverrideDenied,
     isTest,
+    MAX_LOG_PAYLOAD,
     metrics,
     redactHeaders,
     redactURL,
@@ -13,13 +14,13 @@ import {
     truncateJson
 } from '@nangohq/utils';
 
-import { Checkpointing } from './checkpointing.js';
 import { PersistClient } from '../clients/persist.js';
 import { envs } from '../env.js';
 import { logger } from '../logger.js';
+import { Checkpointing } from './checkpointing.js';
 
-import type { Locks } from './locks.js';
 import type { TelemetryRecorder } from '../telemetry.js';
+import type { Locks } from './locks.js';
 import type { ProxyConfiguration, UncontrolledFetchOptions, ZodCheckpoint } from '@nangohq/runner-sdk';
 import type {
     ApiPublicConnectionFull,
@@ -50,6 +51,15 @@ export const oldLevelToNewLevel = {
 
 const HTTP_LOG_MIN_CALLS = 5;
 const HTTP_LOG_SAMPLE_PCT = envs.RUNNER_HTTP_LOG_SAMPLE_PCT; // set to empty to disable sampling
+
+const runnerOutboundPolicy = resolvePolicyForRunner({
+    proxyBaseUrlOverrideEnabled: process.env['NANGO_PROXY_BASE_URL_OVERRIDE_ENABLED'],
+    proxyBaseUrlOverrideDenylistRaw: process.env['NANGO_PROXY_BASE_URL_OVERRIDE_DENYLIST'],
+    outboundUrlPolicy: envs.NANGO_OUTBOUND_URL_POLICY,
+    lambdaRuntimeApi: process.env['AWS_LAMBDA_RUNTIME_API']
+});
+const runnerProxyDenylist = runnerOutboundPolicy.denylist;
+const runnerProxyOverrideEnabled = envs.NANGO_PROXY_BASE_URL_OVERRIDE_ENABLED;
 
 /**
  * Action SDK
@@ -103,33 +113,62 @@ export class NangoActionRunner extends NangoActionBase<never, ZodCheckpoint> {
 
     public override async uncontrolledFetch(options: UncontrolledFetchOptions): Promise<Response> {
         this.throwIfAbortedOrKilled();
-        return executeUncontrolledFetch(options, ({ bytesSent, bytesReceived }) => {
-            this.telemetryRecorder?.record({
-                type: 'data_transfer',
-                callsite: 'uncontrolled_fetch',
-                connectionId: this.connectionId,
-                integrationId: this.providerConfigKey,
-                syncId: this.syncId,
-                bytesSent,
-                bytesReceived
-            });
-        });
+        return executeUncontrolledFetch(
+            options,
+            ({ bytesSent, bytesReceived }) => {
+                this.telemetryRecorder?.record({
+                    type: 'data_transfer',
+                    callsite: 'uncontrolled_fetch',
+                    connectionId: this.connectionId,
+                    integrationId: this.providerConfigKey,
+                    syncId: this.syncId,
+                    bytesSent,
+                    bytesReceived,
+                    count: 1
+                });
+            },
+            runnerOutboundPolicy
+        );
     }
 
     public override async proxy<T = any>(config: ProxyConfiguration): Promise<AxiosResponse<T>> {
         this.throwIfAbortedOrKilled();
 
         const { connectionId, providerConfigKey } = config;
+        const baseUrlOverrideDenylist = runnerProxyDenylist;
+        const overrideEnabled = runnerProxyOverrideEnabled;
 
         let canRetryOn401 = true;
         let prevConnection: ApiPublicConnectionFull | undefined;
         const proxy = new ProxyRequest({
             proxyConfig: getProxyConfiguration({
-                externalConfig: this.getProxyConfig(config),
+                externalConfig: {
+                    ...this.getProxyConfig(config),
+                    ...(!overrideEnabled || baseUrlOverrideDenylist.size > 0
+                        ? {
+                              validateProxyRequestUrl: ({ absoluteUrl, proxyConfig, connection, integrationConfig }) => {
+                                  enforceProxyOutboundUrlPolicy({
+                                      absoluteUrl,
+                                      proxyConfig,
+                                      connection,
+                                      ...(integrationConfig !== undefined ? { integrationConfig } : {}),
+                                      overrideEnabled,
+                                      denylist: baseUrlOverrideDenylist
+                                  });
+                              },
+                              validateProxyRedirectUrl: (absoluteUrl: string) => {
+                                  if (isBaseUrlOverrideDenied(absoluteUrl, baseUrlOverrideDenylist)) {
+                                      throw new ProxyError('proxy_redirect_to_denied_host', 'This redirect target is not allowed by server configuration.');
+                                  }
+                              }
+                          }
+                        : {})
+                },
                 internalConfig: {
                     providerName: this.provider!
                 }
             }).unwrap(),
+            outboundPolicy: runnerOutboundPolicy,
             logger: async (log) => {
                 // We only sample successful HTTP logs because they are the most common and the most noisy.
                 if (HTTP_LOG_SAMPLE_PCT && this.scriptType === 'sync' && log.type === 'http' && log.level === 'info') {
@@ -178,7 +217,8 @@ export class NangoActionRunner extends NangoActionBase<never, ZodCheckpoint> {
                     bytesReceived: received,
                     integrationId: providerConfigKey ?? this.providerConfigKey,
                     connectionId: connectionId ?? this.connectionId,
-                    syncId: this.syncId
+                    syncId: this.syncId,
+                    count: 1
                 });
             }
         });
@@ -293,7 +333,8 @@ export class NangoActionRunner extends NangoActionBase<never, ZodCheckpoint> {
             bytesReceived: 0,
             integrationId: this.providerConfigKey,
             connectionId: this.connectionId,
-            syncId: this.syncId
+            syncId: this.syncId,
+            count: 1
         });
         const res = await this.persistClient.postLog({
             environmentId: this.environmentId,
@@ -320,7 +361,7 @@ export class NangoActionRunner extends NangoActionBase<never, ZodCheckpoint> {
                 acc.push(...Object.values(conn.connection.credentials));
                 return acc;
             }, []),
-            this.nango.secretKey
+            this.nango.apiKey
         ];
 
         const method = res.config.method?.toLocaleUpperCase(); // axios put it in lowercase
@@ -540,7 +581,8 @@ export class NangoSyncRunner extends NangoSyncBase<never, never, ZodCheckpoint> 
                 bytesReceived: 0,
                 integrationId: this.providerConfigKey,
                 connectionId: this.connectionId,
-                syncId: this.syncId
+                syncId: this.syncId,
+                count: 1
             });
             this.setMergingStrategyByModel(modelFullName, result.value.nextMerging);
         }
@@ -580,7 +622,8 @@ export class NangoSyncRunner extends NangoSyncBase<never, never, ZodCheckpoint> 
                 bytesReceived: 0,
                 integrationId: this.providerConfigKey,
                 connectionId: this.connectionId,
-                syncId: this.syncId
+                syncId: this.syncId,
+                count: 1
             });
             this.setMergingStrategyByModel(modelFullName, result.value.nextMerging);
         }
@@ -621,7 +664,8 @@ export class NangoSyncRunner extends NangoSyncBase<never, never, ZodCheckpoint> 
                 bytesReceived: 0,
                 integrationId: this.providerConfigKey,
                 connectionId: this.connectionId,
-                syncId: this.syncId
+                syncId: this.syncId,
+                count: 1
             });
             this.setMergingStrategyByModel(modelFullName, result.value.nextMerging);
         }
@@ -751,7 +795,8 @@ export class NangoSyncRunner extends NangoSyncBase<never, never, ZodCheckpoint> 
             bytesReceived: Buffer.byteLength(JSON.stringify(res.value), 'utf8'),
             integrationId: this.providerConfigKey,
             connectionId: this.connectionId,
-            syncId: this.syncId
+            syncId: this.syncId,
+            count: 1
         });
 
         return { records: res.value.records as NangoRecord<T>[], next_cursor: res.value.nextCursor ?? null };
@@ -799,9 +844,7 @@ export class NangoSyncRunner extends NangoSyncBase<never, never, ZodCheckpoint> 
         let cursor: string | null | undefined = options?.cursor;
         do {
             this.throwIfAbortedOrKilled();
-            const pageOptions: { cursor?: string } = {
-                ...(cursor ? { cursor } : {})
-            };
+            const pageOptions: { cursor?: string } = cursor ? { cursor } : {};
             const { records, next_cursor } = await this.fetchRecordsPage<T>(model, pageOptions);
 
             for (const record of records) {
@@ -922,6 +965,123 @@ export function instrumentSDK(rawNango: NangoActionRunner | NangoSyncRunner) {
             }
 
             return metrics.time(`${metrics.Types.RUNNER_SDK}.${propKey}` as any, (target[propKey] as any).bind(target));
+        }
+    });
+}
+
+/**
+ * @internal
+ *
+ * Properties on the runner that must never be reachable from customer-authored functions.
+ *
+ */
+const FUNCTION_BLOCKED_PROPERTIES = new Set<string | symbol>([
+    'nango',
+    'persistClient',
+    'telemetryRecorder',
+    'locking',
+    'checkpointing',
+    'checkpointKey',
+    'integrationConfig',
+    'memoizedConnections',
+    'memoizedIntegration',
+    'attributes',
+    'telemetryBag',
+    'abortSignal',
+    'lifecycle',
+    'getProxyConfig',
+    'throwIfAbortedOrKilled',
+    'throwIfInterrupted',
+    'shouldLog',
+    'validateRecords',
+    'removeMetadata',
+    'modelFullName',
+    'sendLogToPersist',
+    'logAPICall',
+    'getMergingStrategy',
+    'setMergingStrategyByModel',
+    'trackDeletesKey',
+    'fetchRecordsPage',
+    'getCheckpointRange',
+    'clearRecordsIfNeeded',
+    'batchSize',
+    'getRecordsBatchSize',
+    'mergingByModel',
+    'httpLogSample',
+    '__proto__',
+    'constructor'
+]);
+
+function throwBlockedAccess(prop: string | symbol): never {
+    const name = typeof prop === 'symbol' ? prop.toString() : prop;
+    throw new Error(`Access to "${name}" is not allowed.`);
+}
+
+/**
+ * @internal
+ *
+ * Wraps a runner instance in a Proxy that is safe to hand to customer-authored functions.
+ */
+export function createFunctionFacade<T extends NangoActionRunner | NangoSyncRunner>(runner: T): T {
+    const boundCache = new Map<string | symbol, (...args: any[]) => any>();
+
+    return new Proxy(runner, {
+        get(target, prop, receiver) {
+            if (FUNCTION_BLOCKED_PROPERTIES.has(prop)) {
+                throwBlockedAccess(prop);
+            }
+            const value = Reflect.get(target, prop, receiver);
+            if (typeof value !== 'function') {
+                return value;
+            }
+            let bound = boundCache.get(prop);
+            if (!bound) {
+                bound = (value as (...args: any[]) => any).bind(target);
+                boundCache.set(prop, bound);
+            }
+            return bound;
+        },
+        set(target, prop, value, receiver) {
+            if (FUNCTION_BLOCKED_PROPERTIES.has(prop)) {
+                throwBlockedAccess(prop);
+            }
+            boundCache.delete(prop);
+            return Reflect.set(target, prop, value, receiver);
+        },
+        defineProperty(target, prop, descriptor) {
+            if (FUNCTION_BLOCKED_PROPERTIES.has(prop)) {
+                throwBlockedAccess(prop);
+            }
+            boundCache.delete(prop);
+            return Reflect.defineProperty(target, prop, descriptor);
+        },
+        deleteProperty(target, prop) {
+            if (FUNCTION_BLOCKED_PROPERTIES.has(prop)) {
+                throwBlockedAccess(prop);
+            }
+            boundCache.delete(prop);
+            return Reflect.deleteProperty(target, prop);
+        },
+        has(target, prop) {
+            if (FUNCTION_BLOCKED_PROPERTIES.has(prop)) {
+                return false;
+            }
+            return Reflect.has(target, prop);
+        },
+        getOwnPropertyDescriptor(target, prop) {
+            if (FUNCTION_BLOCKED_PROPERTIES.has(prop)) {
+                return undefined;
+            }
+            return Reflect.getOwnPropertyDescriptor(target, prop);
+        },
+        ownKeys(target) {
+            return Reflect.ownKeys(target).filter((key) => !FUNCTION_BLOCKED_PROPERTIES.has(key));
+        },
+        getPrototypeOf() {
+            return null;
+        },
+        setPrototypeOf() {
+            throwBlockedAccess('prototype');
         }
     });
 }

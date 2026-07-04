@@ -2,23 +2,14 @@ import * as z from 'zod';
 
 import db from '@nangohq/database';
 import { defaultOperationExpiration, endUserToMeta, logContextGetter } from '@nangohq/logs';
-import {
-    ErrorSourceEnum,
-    LogActionEnum,
-    configService,
-    connectionService,
-    errorManager,
-    getConnectionConfig,
-    getProvider,
-    syncEndUserToConnection
-} from '@nangohq/shared';
+import { configService, connectionService, errorManager, ErrorSourceEnum, getProvider, LogActionEnum, syncEndUserToConnection } from '@nangohq/shared';
 import { metrics, stringifyError, zodErrorToHTTP } from '@nangohq/utils';
 
-import { connectionCredential, connectionIdSchema, providerConfigKeySchema } from '../../helpers/validation.js';
-import { validateConnection } from '../../hooks/connection/on/validate-connection.js';
+import { connectionConfigParamsSchema, connectionCredential, connectionIdSchema, providerConfigKeySchema } from '../../helpers/validation.js';
+import { handleValidateConnectionFailure, validateConnection } from '../../hooks/connection/on/validate-connection.js';
 import { connectionCreated as connectionCreatedHook, connectionCreationFailed as connectionCreationFailedHook } from '../../hooks/hooks.js';
 import { asyncWrapper } from '../../utils/asyncWrapper.js';
-import { errorRestrictConnectionId, isIntegrationAllowed } from '../../utils/auth.js';
+import { errorRestrictConnectionId, isIntegrationAllowed, resolveConnectionConfig } from '../../utils/auth.js';
 import { hmacCheck } from '../../utils/hmac.js';
 
 import type { LogContext } from '@nangohq/logs';
@@ -30,7 +21,7 @@ const queryStringValidation = z
     .object({
         connection_id: connectionIdSchema.optional(),
         hmac: z.string().optional(),
-        params: z.record(z.string(), z.any()).optional()
+        params: connectionConfigParamsSchema
     })
     .and(connectionCredential);
 
@@ -58,7 +49,7 @@ export const postPublicOauthOutboundAuthorization = asyncWrapper<PostPublicOauth
     const { account, environment, connectSession } = res.locals;
     const { providerConfigKey }: PostPublicOauthOutboundAuthorization['Params'] = paramsVal.data;
     const queryString: PostPublicOauthOutboundAuthorization['Querystring'] = queryStringVal.data;
-    const connectionConfig = queryString.params ? getConnectionConfig(queryString.params) : {};
+    const connectionConfig = resolveConnectionConfig({ params: queryString.params, connectSession, providerConfigKey });
     let connectionId = queryString.connection_id || connectionService.generateConnectionId();
     const hmac = 'hmac' in queryString ? queryString.hmac : undefined;
     const isConnectSession = res.locals['authType'] === 'connectSession';
@@ -162,15 +153,19 @@ export const postPublicOauthOutboundAuthorization = asyncWrapper<PostPublicOauth
 
         if (customValidationResponse.isErr()) {
             void logCtx.error('Connection failed custom validation', { error: customValidationResponse.error });
+
+            const message = await handleValidateConnectionFailure({
+                operation: updatedConnection.operation,
+                connection: updatedConnection.connection,
+                config,
+                account,
+                environment,
+                provider,
+                error: customValidationResponse.error,
+                logCtx
+            });
+
             await logCtx.failed();
-
-            if (updatedConnection.operation === 'creation') {
-                // since this is a new invalid connection, delete it with no trace of it
-                await connectionService.hardDelete(updatedConnection.connection.id);
-            }
-
-            const payload = customValidationResponse.error?.payload;
-            const message = typeof payload['message'] === 'string' ? payload['message'] : 'Connection failed validation';
 
             res.status(400).send({
                 error: {
@@ -216,7 +211,7 @@ export const postPublicOauthOutboundAuthorization = asyncWrapper<PostPublicOauth
         if (logCtx) {
             void connectionCreationFailedHook(
                 {
-                    connection: { connection_id: connectionId, provider_config_key: providerConfigKey },
+                    connection: { connection_id: connectionId, provider_config_key: providerConfigKey, connection_config: connectionConfig },
                     environment,
                     account,
                     auth_mode: 'OAUTH2',

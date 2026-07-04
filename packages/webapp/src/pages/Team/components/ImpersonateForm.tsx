@@ -3,13 +3,12 @@ import { TriangleAlert } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import z from 'zod';
 
+import { Button, FieldLabel, Input } from '@nangohq/design-system';
+
+import { Alert, AlertDescription } from '@/components/ui/Alert';
 import { Form, FormControl, FormField, FormItem, FormMessage } from '../../../components/ui/Form';
-import { Input } from '../../../components/ui/Input';
 import { apiAdminImpersonate } from '../../../hooks/useAdmin';
 import { useStore } from '../../../store';
-import { Alert, AlertDescription } from '@/components/ui/Alert';
-import { Button } from '@/components/ui/Button';
-import { Label } from '@/components/ui/Label';
 
 const ImpersonateFormSchema = z.object({
     account_uuid: z.string().uuid(),
@@ -39,13 +38,13 @@ export const ImpersonateForm: React.FC = () => {
     };
 
     return (
-        <div className="w-100 flex flex-col gap-3 p-6 border border-border-gray rounded-md relative">
-            <h3 className="text-heading-sm text-text-primary absolute top-[-12px] left-3 bg-bg-surface px-1">Nango admin</h3>
-            <h3 className="text-heading-sm text-text-primary">Impersonate account</h3>
+        <div className="w-100 flex flex-col gap-3 p-6 border border-border-default rounded-md relative">
+            <h3 className="text-heading-sm text-text-strong absolute top-[-12px] left-3 bg-surface-canvas px-1">Nango admin</h3>
+            <h3 className="text-heading-sm text-text-strong">Impersonate account</h3>
             <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-3">
                     <div className="flex flex-col gap-2">
-                        <Label htmlFor="account_uuid">Account UUID</Label>
+                        <FieldLabel htmlFor="account_uuid">Account UUID</FieldLabel>
                         <FormField
                             control={form.control}
                             name="account_uuid"
@@ -61,7 +60,7 @@ export const ImpersonateForm: React.FC = () => {
                     </div>
 
                     <div className="flex flex-col gap-2">
-                        <Label htmlFor="login_reason">Login reason</Label>
+                        <FieldLabel htmlFor="login_reason">Login reason</FieldLabel>
                         <FormField
                             control={form.control}
                             name="login_reason"
@@ -81,10 +80,12 @@ export const ImpersonateForm: React.FC = () => {
                             <span>Impersonating an account will allow you to login as that account and perform actions on their behalf.</span>
                         </AlertDescription>
                     </Alert>
-                    <Button variant="destructive" className="self-end">
-                        Impersonate
-                    </Button>
-                    {form.formState.errors.root && <p className="mt-2 mx-4 text-sm text-red-600">{form.formState.errors.root.message}</p>}
+                    <div className="self-end">
+                        <Button type="submit" variant="danger">
+                            Impersonate
+                        </Button>
+                    </div>
+                    {form.formState.errors.root && <p className="mt-2 mx-4 text-sm text-status-danger-text">{form.formState.errors.root.message}</p>}
                 </form>
             </Form>
         </div>

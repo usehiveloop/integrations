@@ -1,8 +1,18 @@
 import db from '@nangohq/database';
 import { envs, logContextGetter } from '@nangohq/logs';
-import { NangoError, accountService, configService, connectionService, errorManager, getProvider, githubAppClient } from '@nangohq/shared';
-import { flags } from '@nangohq/utils';
+import {
+    accountService,
+    configService,
+    connectionService,
+    errorManager,
+    generateSlackConnectionId,
+    getProvider,
+    githubAppClient,
+    NangoError
+} from '@nangohq/shared';
+import { flags, zodErrorToHTTP } from '@nangohq/utils';
 
+import { webhookUrlSchema } from '../helpers/validation.js';
 import { preConnectionDeletion } from '../hooks/connection/on/pre-connection-deletion.js';
 import {
     connectionCreated as connectionCreatedHook,
@@ -37,11 +47,12 @@ class ConnectionController {
                 return;
             }
 
-            const { environment, account: team } = res.locals;
+            const { environment, account } = res.locals;
             const connectionId = req.params['connectionId'] as string;
+            const expectedConnectionId = generateSlackConnectionId(account.uuid, environment.id);
 
-            if (!connectionId) {
-                errorManager.errRes(res, 'missing_connection_id');
+            if (connectionId !== expectedConnectionId) {
+                res.status(403).json({ error: { code: 'forbidden', message: 'You do not have permission to perform this action' } });
                 return;
             }
 
@@ -70,7 +81,7 @@ class ConnectionController {
 
             const preDeletionHook = () =>
                 preConnectionDeletion({
-                    team,
+                    team: account,
                     environment,
                     connection,
                     logContextGetter
@@ -168,6 +179,12 @@ class ConnectionController {
 
             if (!provider_config_key) {
                 errorManager.errRes(res, 'missing_provider_config');
+                return;
+            }
+
+            const webhookUrlValidation = webhookUrlSchema.safeParse(connection_config?.webhook_url);
+            if (!webhookUrlValidation.success) {
+                res.status(400).send({ error: { code: 'invalid_body', errors: zodErrorToHTTP(webhookUrlValidation.error) } });
                 return;
             }
 

@@ -1,10 +1,11 @@
 import { Check, Edit, Loader2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
-import { ConditionalTooltip } from './ConditionalTooltip';
-import { CopyButton } from '../ui/CopyButton';
-import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput, InputGroupTextarea } from '../ui/InputGroup';
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput, InputGroupTextarea } from '@nangohq/design-system';
+
 import { PermissionGate } from '@/components/patterns/PermissionGate';
+import { CopyButton } from '../ui/CopyButton';
+import { ConditionalTooltip } from './ConditionalTooltip';
 
 export interface EditableInputProps {
     id?: string;
@@ -118,7 +119,7 @@ export const EditableInput: React.FC<EditableInputProps> = ({
                         id={id}
                         value={displayValue}
                         onChange={handleChange}
-                        className="h-36"
+                        rows={6}
                         disabled={!editing}
                         onKeyDown={(e) => {
                             if (e.key === 'Escape') onCancelClicked();
@@ -150,31 +151,33 @@ export const EditableInput: React.FC<EditableInputProps> = ({
                         <ConditionalTooltip condition={!!disabled && typeof disabled === 'string'} content={disabled} side="bottom">
                             <PermissionGate condition={canEdit} tooltipSide="bottom">
                                 {(allowed) => (
-                                    <InputGroupButton disabled={!!disabled || !allowed} onClick={onEditClicked} size="icon-sm">
-                                        <Edit />
+                                    <InputGroupButton label="Edit" disabled={!!disabled || !allowed} onClick={onEditClicked} size="icon-sm">
+                                        <Edit className="size-3.5" />
                                     </InputGroupButton>
                                 )}
                             </PermissionGate>
                         </ConditionalTooltip>
                         <InputGroupAddon align="inline-end">
                             <PermissionGate condition={canRead || !secret} tooltipSide="bottom">
-                                {(allowed) => <CopyButton disabled={!allowed} text={value} />}
+                                {(allowed) => <CopyButton disabled={!allowed} text={value} className="size-6 p-0" />}
                             </PermissionGate>
                         </InputGroupAddon>
                     </>
                 ) : (
                     <>
-                        <InputGroupButton onClick={onCancelClicked} size="icon-sm">
-                            <X />
+                        <InputGroupButton label="Cancel" onClick={onCancelClicked} size="icon-sm">
+                            <X className="size-3.5" />
                         </InputGroupButton>
-                        <InputGroupButton onClick={onSaveClicked} size="icon-sm" disabled={!!error}>
-                            <Check />
-                        </InputGroupButton>
+                        <InputGroupAddon align="inline-end">
+                            <InputGroupButton label="Save" onClick={onSaveClicked} size="icon-sm" disabled={!!error}>
+                                <Check className="size-3.5" />
+                            </InputGroupButton>
+                        </InputGroupAddon>
                     </>
                 )}
             </InputGroup>
             {editing && (error || hintText) && (
-                <p className={`text-body-small-regular ${error ? 'text-feedback-error-fg' : 'text-text-tertiary'}`}>*{error || hintText}</p>
+                <p className={`text-body-small-regular ${error ? 'text-status-danger-text' : 'text-text-muted'}`}>*{error || hintText}</p>
             )}
         </div>
     );

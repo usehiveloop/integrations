@@ -1,7 +1,10 @@
-import { IconBrandNodejs, IconTerminal2 } from '@tabler/icons-react';
-import { CodeXml, Loader } from 'lucide-react';
+import { CodeXml, Loader, Server, Terminal } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
+import { Button } from '@nangohq/design-system';
+
+import { StyledLink } from '@/components/ui/StyledLink';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/Tooltip';
 import { MultiLanguageCodeBlock } from '../../components/ui/MultiLanguageCodeBlock';
 import { useApiKeys } from '../../hooks/useApiKeys';
 import { useEnvironment } from '../../hooks/useEnvironment';
@@ -9,9 +12,6 @@ import { useToast } from '../../hooks/useToast';
 import { useStore } from '../../store';
 import { publicApiFetch } from '../../utils/api';
 import { cn, truncateMiddle } from '../../utils/utils';
-import { Button } from '@/components/ui/Button';
-import { StyledLink } from '@/components/ui/StyledLink';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/Tooltip';
 
 function getNodeClientCode(connectionId?: string, providerConfigKey?: string) {
     return `
@@ -112,16 +112,16 @@ export const SecondStep: React.FC<SecondStepProps> = ({ connectionId, providerCo
     return (
         <div className="flex flex-col gap-5 w-full min-w-0">
             <div className="flex flex-col gap-1.5">
-                <h3 className="text-text-primary text-sm font-semibold">Use Nango as a proxy to make requests to Github</h3>
+                <h3 className="text-text-strong text-sm font-semibold">Use Nango as a proxy to make requests to Github</h3>
                 {!connectionId && (
-                    <p className="text-text-tertiary text-sm">
+                    <p className="text-text-muted text-sm">
                         Nango will handle API credentials for you. <br />
                         All you need is the connection id.
                     </p>
                 )}
                 {connectionId && (
                     <div>
-                        <p className="text-text-tertiary text-sm">
+                        <p className="text-text-muted text-sm">
                             A connection was created with the connection id:{' '}
                             <Tooltip open={isTooltipOpen} onOpenChange={setIsTooltipOpen}>
                                 <TooltipTrigger>
@@ -132,7 +132,7 @@ export const SecondStep: React.FC<SecondStepProps> = ({ connectionId, providerCo
                                 <TooltipContent side="bottom">{connectionId}</TooltipContent>
                             </Tooltip>
                         </p>
-                        <p className="text-text-tertiary text-sm">You can use it to make requests to Github.</p>
+                        <p className="text-text-muted text-sm">You can use it to make requests to Github.</p>
                     </div>
                 )}
             </div>
@@ -143,14 +143,14 @@ export const SecondStep: React.FC<SecondStepProps> = ({ connectionId, providerCo
                             snippets={[
                                 {
                                     displayLanguage: 'Node Client',
-                                    icon: <IconBrandNodejs className="w-4 h-4" />,
+                                    icon: <Server className="w-4 h-4" />,
                                     language: 'typescript',
                                     code: nodeClientCode,
                                     highlightedLines: isTooltipOpen ? [7] : undefined
                                 },
                                 {
                                     displayLanguage: 'cURL',
-                                    icon: <IconTerminal2 className="w-4 h-4" />,
+                                    icon: <Terminal className="w-4 h-4" />,
                                     language: 'bash',
                                     code: curlCode,
                                     highlightedLines: isTooltipOpen ? [4] : undefined

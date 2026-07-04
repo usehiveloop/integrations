@@ -18,22 +18,21 @@
     },
     "license": "SEE LICENSE IN LICENSE FILE IN GIT REPOSITORY",
     "dependencies": {
-        "@nangohq/kvstore": "file:../kvstore",
         "@nangohq/node": "file:../node-client",
         "@nangohq/runner-sdk": "file:../runner-sdk",
-        "@nangohq/shared": "file:../shared",
         "@nangohq/providers": "file:../providers",
+        "@nangohq/shared": "file:../shared",
         "@nangohq/utils": "file:../utils",
         "@trpc/client": "10.45.3",
         "@trpc/server": "10.45.3",
-        "axios": "1.16.1",
-        "botbuilder": "4.23.2",
+        "axios": "1.18.0",
+        "botbuilder": "4.23.3",
         "connect-timeout": "1.9.1",
         "dd-trace": "5.52.0",
         "express": "5.1.0",
-        "soap": "1.2.1",
+        "soap": "1.9.3",
         "superjson": "2.2.1",
-        "undici": "6.24.1",
+        "undici": "6.27.0",
         "unzipper": "0.12.3",
         "zod": "4.0.5"
     },
@@ -43,6 +42,6 @@
         "@types/connect-timeout": "1.9.0",
         "@types/unzipper": "0.10.10",
         "typescript": "5.8.3",
-        "vitest": "4.1.8"
+        "vitest": "4.1.9"
     }
 }

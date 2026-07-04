@@ -7,13 +7,13 @@ import { build } from 'esbuild';
 import { serializeError } from 'serialize-error';
 import ts from 'typescript';
 
-import { allowedPackages, importRegex, npmPackageRegex, tsconfig, tsconfigString } from './constants.js';
-import { parseIntegrationDefinitions } from './definitions.js';
-import { CompileError, ReadableError, badExportCompilerError, fileErrorToText, tsDiagnosticToText } from './utils.js';
 import { generateNangoJson } from '../services/model.service.js';
+import { printDebug } from '../utils.js';
 import { Err, Ok } from '../utils/result.js';
 import { Spinner } from '../utils/spinner.js';
-import { printDebug } from '../utils.js';
+import { allowedPackages, importRegex, npmPackageRegex, tsconfig, tsconfigString } from './constants.js';
+import { parseIntegrationDefinitions } from './definitions.js';
+import { badExportCompilerError, CompileError, fileErrorToText, ReadableError, tsDiagnosticToText } from './utils.js';
 
 // import type { BabelErrorType } from './constants.js';
 import type { Feature, Result } from '@nangohq/types';
@@ -459,7 +459,19 @@ function nangoPlugin({ entryPoint }: { entryPoint: string }) {
     // Get actual path even if entryPoint is a symlink
     const realEntryPoint = fs.realpathSync(normalizedEntryPoint.replace('.js', '.ts')).replace('.ts', '.js');
 
-    const allowedExports = ['createAction', 'createSync', 'createOnEvent'];
+    const allowedExports = {
+        createAction: { type: 'action', varName: 'action' },
+        createSync: { type: 'sync', varName: 'sync' },
+        createOnEvent: { type: 'onEvent', varName: 'onEvent' }
+    } as const satisfies Record<string, { type: string; varName: string }>;
+
+    type AllowedExportName = keyof typeof allowedExports;
+
+    function isAllowedExport(name: string): name is AllowedExportName {
+        // Use hasOwn rather than `in` so inherited prototype names (toString, constructor, …) are not accepted.
+        return Object.hasOwn(allowedExports, name);
+    }
+
     const needsAwait = [
         'batchDelete',
         'batchSave',
@@ -642,7 +654,7 @@ function nangoPlugin({ entryPoint }: { entryPoint: string }) {
                             throw new CompileError(
                                 'nango_named_export_not_allowed',
                                 lineNumber,
-                                `Named export '${exportedName}' is not allowed. Only export default and ${allowedExports.join(', ')} are permitted.`
+                                `Named export '${exportedName}' is not allowed. Only export default and ${Object.keys(allowedExports).join(', ')} are permitted.`
                             );
                         };
 
@@ -651,7 +663,7 @@ function nangoPlugin({ entryPoint }: { entryPoint: string }) {
                             for (const specifier of node.specifiers) {
                                 if (t.isExportSpecifier(specifier) && t.isIdentifier(specifier.exported)) {
                                     const exportedName = specifier.exported.name;
-                                    if (!allowedExports.includes(exportedName)) {
+                                    if (!isAllowedExport(exportedName)) {
                                         namedExportError(exportedName);
                                     }
                                 }
@@ -673,7 +685,7 @@ function nangoPlugin({ entryPoint }: { entryPoint: string }) {
                             }
 
                             for (const exportedName of exportedNames) {
-                                if (!allowedExports.includes(exportedName)) {
+                                if (!isAllowedExport(exportedName)) {
                                     namedExportError(exportedName);
                                 }
                             }
@@ -696,28 +708,24 @@ function nangoPlugin({ entryPoint }: { entryPoint: string }) {
 
                         const lineNumber = astPath.node.loc?.start.line || 0;
                         const decl = astPath.node.declaration;
-                        let calleeName = null;
                         let arg = null;
 
                         // Case 1: export default createAction({...})
-                        if (t.isCallExpression(decl) && t.isIdentifier(decl.callee) && allowedExports.includes(decl.callee.name)) {
-                            let varName = '';
-                            calleeName = decl.callee.name;
+                        if (t.isCallExpression(decl) && t.isIdentifier(decl.callee) && isAllowedExport(decl.callee.name)) {
+                            const calleeName = decl.callee.name;
                             arg = decl.arguments[0];
                             if (!t.isObjectExpression(arg)) {
                                 throw new CompileError('nango_invalid_function_param', lineNumber, 'Invalid function parameter, should be an object');
                             }
 
-                            if (calleeName === 'createAction') varName = 'action';
-                            if (calleeName === 'createSync') varName = 'sync';
-                            if (calleeName === 'createOnEvent') varName = 'onEvent';
+                            const mapping = allowedExports[calleeName];
+                            const varName = mapping.varName;
 
                             // Inject type property
-                            arg.properties = [t.objectProperty(t.identifier('type'), t.stringLiteral(varName)), ...arg.properties];
-                            const newValue = arg;
-                            // Insert: export const <varName> = <newValue>;
+                            arg.properties = [t.objectProperty(t.identifier('type'), t.stringLiteral(mapping.type)), ...arg.properties];
+                            // Insert: export const <varName> = <arg>;
                             const exportConst = t.exportNamedDeclaration(
-                                t.variableDeclaration('const', [t.variableDeclarator(t.identifier(varName), newValue)]),
+                                t.variableDeclaration('const', [t.variableDeclarator(t.identifier(varName), arg)]),
                                 []
                             );
                             // Insert: export default <varName>;
@@ -734,22 +742,18 @@ function nangoPlugin({ entryPoint }: { entryPoint: string }) {
                             }
 
                             const init = binding.path.node.init;
-                            if (!t.isCallExpression(init) || !t.isIdentifier(init.callee) || !allowedExports.includes(init.callee.name)) {
+                            if (!t.isCallExpression(init) || !t.isIdentifier(init.callee) || !isAllowedExport(init.callee.name)) {
                                 throw new CompileError('nango_invalid_default_export', lineNumber, badExportCompilerError);
                             }
 
-                            let varName = '';
-                            calleeName = init.callee.name;
+                            const calleeName = init.callee.name;
                             arg = init.arguments[0];
                             if (!t.isObjectExpression(arg)) {
                                 throw new CompileError('nango_invalid_function_param', lineNumber, 'Invalid function parameter, should be an object');
                             }
 
-                            if (calleeName === 'createAction') varName = 'action';
-                            if (calleeName === 'createSync') varName = 'sync';
-                            if (calleeName === 'createOnEvent') varName = 'onEvent';
                             // Inject type property (mutate the object literal)
-                            arg.properties = [t.objectProperty(t.identifier('type'), t.stringLiteral(varName)), ...arg.properties];
+                            arg.properties = [t.objectProperty(t.identifier('type'), t.stringLiteral(allowedExports[calleeName].type)), ...arg.properties];
                             // Replace the variable's initializer with the object literal
                             binding.path.get('init').replaceWith(arg);
                             return;

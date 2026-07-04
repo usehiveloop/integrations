@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import * as utils from './utils.js';
 
@@ -15,6 +15,22 @@ describe('Proxy service Construct Header Tests', () => {
         expect(utils.isValidHttpUrl('https://samcarthelp.freshdesk.com/api/v2/tickets?per_page=100&include=requester,description&page=3')).toBe(true);
 
         expect(utils.isValidHttpUrl('/api/v2/tickets?per_page=100&include=requester,description&page=3')).toBe(false);
+    });
+});
+describe('getConnectionConfig', () => {
+    it('keeps string query params', () => {
+        expect(utils.getConnectionConfig({ subdomain: 'acme', region: 'eu' })).toEqual({ subdomain: 'acme', region: 'eu' });
+    });
+
+    it('drops non-string values', () => {
+        expect(utils.getConnectionConfig({ subdomain: 'acme', count: 5, flag: true })).toEqual({ subdomain: 'acme' });
+    });
+
+    // webhook_url is a privileged routing directive: it must only be settable by the backend via the
+    // connect session, never by an untrusted client passing it as a connection param. Stripping it here
+    // closes every client-param entry point (auth endpoints + OAuth) in one place.
+    it('strips webhook_url so an untrusted client cannot route webhooks', () => {
+        expect(utils.getConnectionConfig({ subdomain: 'acme', webhook_url: 'https://attacker.example.com/hook' })).toEqual({ subdomain: 'acme' });
     });
 });
 describe('encodeParameters Function Tests', () => {
@@ -496,59 +512,6 @@ describe('parseTokenExpirationDate', () => {
         const millisecondsTimestamp = Date.now();
         const expected = new Date(millisecondsTimestamp);
         expect(utils.parseTokenExpirationDate(millisecondsTimestamp)?.getTime()).toBe(expected.getTime());
-    });
-});
-
-describe('getRedisUrl', () => {
-    const originalEnv = process.env;
-
-    beforeEach(() => {
-        vi.resetModules();
-        process.env = { ...originalEnv };
-    });
-
-    afterEach(() => {
-        process.env = originalEnv;
-    });
-
-    it('should return undefined when no relevant env vars are set', () => {
-        delete process.env['NANGO_REDIS_URL'];
-        delete process.env['NANGO_REDIS_HOST'];
-        delete process.env['NANGO_REDIS_PORT'];
-        delete process.env['NANGO_REDIS_AUTH'];
-
-        const result = utils.getRedisUrl();
-        expect(result).toBeUndefined();
-    });
-
-    it('should return NANGO_REDIS_URL when it is set', () => {
-        process.env['NANGO_REDIS_URL'] = 'redis://localhost:6379';
-        delete process.env['NANGO_REDIS_HOST'];
-        delete process.env['NANGO_REDIS_PORT'];
-        delete process.env['NANGO_REDIS_AUTH'];
-
-        const result = utils.getRedisUrl();
-        expect(result).toBe('redis://localhost:6379');
-    });
-
-    it('should return undefined when only some of the other env vars are set', () => {
-        delete process.env['NANGO_REDIS_URL'];
-        process.env['NANGO_REDIS_HOST'] = 'localhost';
-        process.env['NANGO_REDIS_PORT'] = '6379';
-        // NANGO_REDIS_AUTH is missing
-
-        const result = utils.getRedisUrl();
-        expect(result).toBeUndefined();
-    });
-
-    it('should return constructed URL when all other env vars are set', () => {
-        delete process.env['NANGO_REDIS_URL'];
-        process.env['NANGO_REDIS_HOST'] = 'localhost';
-        process.env['NANGO_REDIS_PORT'] = '6379';
-        process.env['NANGO_REDIS_AUTH'] = 'password';
-
-        const result = utils.getRedisUrl();
-        expect(result).toBe('rediss://:password@localhost:6379');
     });
 });
 

@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
-import { Button } from '../ui/Button';
+import { Button, Field, FieldLabel, Input } from '@nangohq/design-system';
+
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogTitle, DialogTrigger } from '../ui/Dialog';
-import { Input } from '../ui/Input';
 
 interface DestructiveActionModalProps {
     title: string;
@@ -30,6 +30,7 @@ export const DestructiveActionModal: React.FC<DestructiveActionModalProps> = ({
     onOpenChange
 }) => {
     const [confirmText, setConfirmText] = useState('');
+    const inputId = useId();
     const isConfirmed = confirmText === confirmationKeyword;
 
     return (
@@ -39,16 +40,24 @@ export const DestructiveActionModal: React.FC<DestructiveActionModalProps> = ({
                 <DialogTitle>{title}</DialogTitle>
                 <DialogDescription className="-mt-3">{description}</DialogDescription>
 
-                <div className="flex flex-col gap-2">
-                    <p className="text-sm text-white break-words">{inputLabel}</p>
-                    <Input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} placeholder="Enter confirmation text" className="w-full" />
-                </div>
+                <Field>
+                    <FieldLabel htmlFor={inputId} className="break-words">
+                        {inputLabel}
+                    </FieldLabel>
+                    <Input
+                        id={inputId}
+                        value={confirmText}
+                        onChange={(e) => setConfirmText(e.target.value)}
+                        placeholder="Enter confirmation text"
+                        className="w-full"
+                    />
+                </Field>
 
                 <DialogFooter>
                     <DialogClose asChild>
-                        <Button variant="secondary">{cancelButtonText}</Button>
+                        <Button variant="outline">{cancelButtonText}</Button>
                     </DialogClose>
-                    <Button variant="destructive" onClick={onConfirm} disabled={!isConfirmed}>
+                    <Button variant="danger" onClick={onConfirm} disabled={!isConfirmed}>
                         {confirmButtonText}
                     </Button>
                 </DialogFooter>

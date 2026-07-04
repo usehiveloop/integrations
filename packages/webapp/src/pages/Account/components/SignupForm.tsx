@@ -5,11 +5,11 @@ import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import z from 'zod';
 
+import { Button, InputGroup, InputGroupInput } from '@nangohq/design-system';
+
 import GoogleButton from '@/components/patterns/GoogleButton';
 import { Alert, AlertActions, AlertButton, AlertDescription, AlertTitle } from '@/components/ui/Alert';
-import { Button } from '@/components/ui/Button';
 import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/Form';
-import { InputGroup, InputGroupInput } from '@/components/ui/InputGroup';
 import { StyledLink } from '@/components/ui/StyledLink';
 import { useResendVerificationEmail, useSignupAPI } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/useToast';
@@ -144,7 +144,7 @@ export const SignupForm: React.FC<{ invitation?: ApiInvitation; token?: string }
                             render={({ field, fieldState }) => (
                                 <FormItem>
                                     <FormControl>
-                                        <InputGroup className="h-11">
+                                        <InputGroup>
                                             <InputGroupInput placeholder="Name" autoComplete="name" {...field} aria-invalid={!!fieldState.error} />
                                         </InputGroup>
                                     </FormControl>
@@ -158,7 +158,7 @@ export const SignupForm: React.FC<{ invitation?: ApiInvitation; token?: string }
                             render={({ field, fieldState }) => (
                                 <FormItem>
                                     <FormControl>
-                                        <InputGroup className="h-11">
+                                        <InputGroup>
                                             <InputGroupInput
                                                 disabled={!!invitation?.email}
                                                 placeholder="Email"
@@ -175,7 +175,7 @@ export const SignupForm: React.FC<{ invitation?: ApiInvitation; token?: string }
 
                         <FormField control={form.control} name="password" render={() => <Password autoComplete="new-password" />} />
 
-                        <Button type="submit" size="lg" className="w-full" loading={isPending} disabled={!form.formState.isValid}>
+                        <Button type="submit" size="lg" loading={isPending} disabled={!form.formState.isValid}>
                             {isPending ? 'Signing up...' : 'Sign up'}
                         </Button>
                     </form>
@@ -195,7 +195,7 @@ export const SignupForm: React.FC<{ invitation?: ApiInvitation; token?: string }
                     </div>
                 )}
 
-                <span className="text-center w-full text-body-medium-regular text-text-tertiary">
+                <span className="text-center w-full text-body-medium-regular text-text-muted">
                     By signing up, you agree to our <br />{' '}
                     <StyledLink type="external" to="https://www.nango.dev/terms" className="text-text-secondary text-body-medium-regular">
                         Terms of Service

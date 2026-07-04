@@ -6,10 +6,14 @@ import { useSearchParam, useUnmount } from 'react-use';
 import { useSWRConfig } from 'swr';
 
 import { permissions } from '@nangohq/authz';
+import { Button } from '@nangohq/design-system';
 import Nango from '@nangohq/frontend';
 
-import { IntegrationDropdown } from './IntegrationDropdown';
-import { Button } from '../../../components/ui/Button';
+import { PermissionGate } from '@/components/patterns/PermissionGate';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
+import { InfoTooltip } from '@/components/ui/InfoTooltip';
+import { usePermissions } from '@/hooks/usePermissions';
+import { darkModeSelector, useThemeStore } from '@/lib/theme';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../components/ui/Tooltip';
 import { apiConnectSessions } from '../../../hooks/useConnect';
 import { clearConnectionsCache } from '../../../hooks/useConnections';
@@ -21,10 +25,7 @@ import { useStore } from '../../../store';
 import { useAnalyticsTrack } from '../../../utils/analytics';
 import { globalEnv } from '../../../utils/env';
 import { formatDateToPreciseUSFormat } from '../../../utils/utils';
-import { PermissionGate } from '@/components/patterns/PermissionGate';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
-import { InfoTooltip } from '@/components/ui/InfoTooltip';
-import { usePermissions } from '@/hooks/usePermissions';
+import { IntegrationDropdown } from './IntegrationDropdown';
 
 import type { AuthResult, ConnectUI, OnConnectEvent } from '@nangohq/frontend';
 import type { ApiIntegrationList } from '@nangohq/types';
@@ -41,6 +42,7 @@ interface CreateConnectionSelectorProps {
     overrideClientId: string | undefined;
     overrideClientSecret: string | undefined;
     overrideDocUrl: string | undefined;
+    overrideWebhookUrl: string | undefined;
     defaultDocUrl?: string;
     isFormValid?: boolean;
 }
@@ -57,6 +59,7 @@ export const CreateConnectionSelector: React.FC<CreateConnectionSelectorProps> =
     overrideClientId,
     overrideClientSecret,
     overrideDocUrl,
+    overrideWebhookUrl,
     defaultDocUrl,
     isFormValid = true
 }) => {
@@ -76,6 +79,7 @@ export const CreateConnectionSelector: React.FC<CreateConnectionSelectorProps> =
     const canCreateTestConnection = can(permissions.canWriteProdConnections) || !environment?.is_production;
 
     const connectUI = useRef<ConnectUI>();
+    const isDarkMode = useThemeStore(darkModeSelector);
     const hasConnected = useRef<AuthResult | undefined>();
     const { mutate, cache } = useSWRConfig();
     const [isShareLinkLoading, setIsShareLinkLoading] = useState(false);
@@ -120,8 +124,20 @@ export const CreateConnectionSelector: React.FC<CreateConnectionSelectorProps> =
         const isOauth2 = integration && ['OAUTH2', 'OAUTH2_CC', 'MCP_OAUTH2', 'MCP_OAUTH2_GENERIC'].includes(integration.meta.authMode);
 
         const oauthScopesOverride = overrideOauthScopes !== undefined && overrideOauthScopes !== integration?.oauth_scopes ? overrideOauthScopes : undefined;
-        const hasConnectionConfigOverrides = overrideClientId !== undefined || overrideClientSecret !== undefined || oauthScopesOverride !== undefined;
+        const webhookUrl = overrideWebhookUrl?.trim() ? overrideWebhookUrl.trim() : undefined;
         const shouldSendDocsConnect = overrideDocUrl && overrideDocUrl !== defaultDocUrl;
+
+        // OAuth client/scope overrides only apply to OAuth flows; webhook URL overrides apply to every auth type.
+        const oauthConfigOverrides =
+            isOauth2 && (overrideClientId !== undefined || overrideClientSecret !== undefined || oauthScopesOverride !== undefined)
+                ? {
+                      oauth_client_id_override: overrideClientId,
+                      oauth_client_secret_override: overrideClientSecret,
+                      oauth_scopes_override: oauthScopesOverride
+                  }
+                : undefined;
+        const connectionConfig =
+            oauthConfigOverrides || webhookUrl ? { ...oauthConfigOverrides, ...(webhookUrl ? { webhook_url: webhookUrl } : {}) } : undefined;
 
         return await apiConnectSessions(env, {
             allowed_integrations: integration ? [integration.unique_key] : undefined,
@@ -130,14 +146,7 @@ export const CreateConnectionSelector: React.FC<CreateConnectionSelectorProps> =
                 ? {
                       [integration.unique_key]: {
                           authorization_params: isOauth2 && overrideAuthParams && Object.keys(overrideAuthParams).length > 0 ? overrideAuthParams : undefined,
-                          connection_config:
-                              isOauth2 && hasConnectionConfigOverrides
-                                  ? {
-                                        oauth_client_id_override: overrideClientId,
-                                        oauth_client_secret_override: overrideClientSecret,
-                                        oauth_scopes_override: oauthScopesOverride
-                                    }
-                                  : undefined
+                          connection_config: connectionConfig
                       }
                   }
                 : undefined,
@@ -149,7 +158,18 @@ export const CreateConnectionSelector: React.FC<CreateConnectionSelectorProps> =
                   }
                 : undefined
         });
-    }, [integration, overrideOauthScopes, overrideClientId, overrideClientSecret, overrideDocUrl, defaultDocUrl, env, testUser, overrideAuthParams]);
+    }, [
+        integration,
+        overrideOauthScopes,
+        overrideClientId,
+        overrideClientSecret,
+        overrideDocUrl,
+        overrideWebhookUrl,
+        defaultDocUrl,
+        env,
+        testUser,
+        overrideAuthParams
+    ]);
 
     const onClickConnectUI = () => {
         if (!environmentAndAccount) {
@@ -168,7 +188,8 @@ export const CreateConnectionSelector: React.FC<CreateConnectionSelectorProps> =
         connectUI.current = nango.openConnectUI({
             baseURL: globalEnv.connectUrl,
             apiURL: globalEnv.apiUrl,
-            onEvent
+            onEvent,
+            themeOverride: isDarkMode ? 'dark' : 'light'
         });
 
         // We defer the token creation so the iframe can open and display a loading screen
@@ -279,7 +300,7 @@ export const CreateConnectionSelector: React.FC<CreateConnectionSelectorProps> =
     }, [usageCapReached, integrationHasMissingFields, env, integration, isFormValid]);
 
     return (
-        <Card className="bg-bg-elevated rounded border-none gap-2.5">
+        <Card className="bg-surface-page rounded border-none gap-2.5">
             <CardHeader className={'gap-4'}>
                 <CardTitle>Test connection</CardTitle>
                 <CardDescription>Pick an integration to test from the list below</CardDescription>
@@ -324,7 +345,7 @@ export const CreateConnectionSelector: React.FC<CreateConnectionSelectorProps> =
                                             <Button
                                                 onClick={onClickShareConnectionLink}
                                                 size="lg"
-                                                variant="secondary"
+                                                variant="ghost"
                                                 loading={isShareLinkLoading}
                                                 disabled={usageCapReached || integrationHasMissingFields || !isFormValid || !allowed}
                                             >

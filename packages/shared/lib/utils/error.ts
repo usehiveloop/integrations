@@ -324,6 +324,22 @@ export class NangoError extends NangoInternalError {
                 }
                 break;
 
+            case 'attio_mcp_token_request_error':
+                this.status = 400;
+                this.message = `The Attio MCP API returned an error when trying to request an access token. Please try again later.`;
+                if (this.payload) {
+                    this.message += ` Error: ${typeof this.payload === 'string' ? this.payload : JSON.stringify(this.payload)}`;
+                }
+                break;
+
+            case 'attio_mcp_refresh_token_request_error':
+                this.status = 400;
+                this.message = `The Attio MCP API returned an error when trying to refresh the access token. Please try again later.`;
+                if (this.payload) {
+                    this.message += ` Error: ${typeof this.payload === 'string' ? this.payload : JSON.stringify(this.payload)}`;
+                }
+                break;
+
             case 'slack_token_request_error':
                 this.status = 400;
                 this.message = `The Slack API returned an error when trying to request for an access token. Please try again later.`;
@@ -391,6 +407,11 @@ export class NangoError extends NangoInternalError {
             case 'duplicate_provider_config':
                 this.status = 409;
                 this.message = `There is already a Provider Configuration matching the param 'provider_config_key'.`;
+                break;
+
+            case 'template_already_deployed':
+                this.status = 409;
+                this.message = 'This template is already deployed on the integration.';
                 break;
 
             case 'missing_required_fields_on_deploy':

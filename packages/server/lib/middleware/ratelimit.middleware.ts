@@ -2,7 +2,7 @@ import path from 'node:path';
 
 import { RateLimiterMemory, RateLimiterRedis, RateLimiterRes } from 'rate-limiter-flexible';
 
-import { getRedisUrl } from '@nangohq/shared';
+import { getRedisUrl } from '@nangohq/kvstore';
 import { flagHasAPIRateLimit, flagHasPlan, getLogger } from '@nangohq/utils';
 
 import { envs } from '../env.js';
@@ -23,7 +23,9 @@ const rateLimiterSize: Record<DBPlan['api_rate_limit_size'], number> = {
     xl: defaultLimit * 10,
     '2xl': defaultLimit * 25,
     '3xl': defaultLimit * 50,
-    '4xl': defaultLimit * 75
+    '4xl': defaultLimit * 75,
+    '5xl': defaultLimit * 100,
+    '6xl': defaultLimit * 125
 };
 const limiters = new Map<DBPlan['api_rate_limit_size'], RateLimiterAbstract>();
 
@@ -49,7 +51,7 @@ async function getRateLimiter(size: DBPlan['api_rate_limit_size']) {
         redisClient.on('error', (err) => {
             logger.error(`Redis (rate-limiter) error: ${err}`);
         });
-        limiter = new RateLimiterRedis({ storeClient: redisClient, ...opts });
+        limiter = new RateLimiterRedis({ storeClient: redisClient, useRedisPackage: true, ...opts });
     } else {
         limiter = new RateLimiterMemory(opts);
     }
@@ -92,7 +94,7 @@ export const rateLimiterMiddleware = async (req: Request, res: Response<any, Req
 
             setXRateLimitHeaders(maxPoints, err);
             res.setHeader('Retry-After', Math.floor(err.msBeforeNext / 1000));
-            res.status(429).send({ error: { code: 'too_many_request' } });
+            res.status(429).send({ error: { code: 'too_many_request', method: req.method, path: req.path } });
             return;
         }
 

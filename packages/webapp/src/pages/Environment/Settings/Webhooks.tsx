@@ -1,19 +1,19 @@
 import { ExternalLink } from 'lucide-react';
 
 import { permissions } from '@nangohq/authz';
+import { FieldLabel } from '@nangohq/design-system';
 
-import SettingsContent from './components/SettingsContent.js';
-import SettingsGroup from './components/SettingsGroup.js';
-import { WebhookCheckboxes } from './components/WebhookCheckboxes.js';
-import { useEnvironment, usePatchWebhook } from '../../../hooks/useEnvironment.js';
 import { EditableInput } from '@/components/patterns/EditableInput.js';
 import { SecretInput } from '@/components/patterns/SecretInput.js';
-import { ButtonLink } from '@/components/ui/Button.js';
-import { Label } from '@/components/ui/Label.js';
+import { ButtonLink } from '@/components/ui/ButtonLink';
 import { usePermissions } from '@/hooks/usePermissions.js';
 import { useToast } from '@/hooks/useToast.js';
 import { validateUrl } from '@/pages/Integrations/utils.js';
 import { useStore } from '@/store';
+import { useEnvironment, usePatchWebhook } from '../../../hooks/useEnvironment.js';
+import SettingsContent from './components/SettingsContent.js';
+import SettingsGroup from './components/SettingsGroup.js';
+import { WebhookCheckboxes } from './components/WebhookCheckboxes.js';
 
 import type { PatchWebhook } from '@nangohq/types';
 
@@ -49,7 +49,7 @@ export const Webhooks: React.FC = () => {
                 label={
                     <div className="flex gap-1.5">
                         Webhook URLs
-                        <ButtonLink target="_blank" to="https://nango.dev/docs/guides/platform/webhooks-from-nango" variant="ghost" size="icon">
+                        <ButtonLink target="_blank" to="https://nango.dev/docs/guides/platform/webhooks-from-nango" variant="ghost" size="2xs">
                             <ExternalLink />
                         </ButtonLink>
                     </div>
@@ -57,7 +57,7 @@ export const Webhooks: React.FC = () => {
             >
                 <div className="flex flex-col gap-7">
                     <div className="flex flex-col gap-2">
-                        <Label htmlFor="primary_url">Primary URL</Label>
+                        <FieldLabel htmlFor="primary_url">Primary URL</FieldLabel>
                         <EditableInput
                             id="primary_url"
                             placeholder="https://example.com/webhooks_from_nango"
@@ -68,7 +68,7 @@ export const Webhooks: React.FC = () => {
                         />
                     </div>
                     <div className="flex flex-col gap-2">
-                        <Label htmlFor="secondary_url">Secondary URL</Label>
+                        <FieldLabel htmlFor="secondary_url">Secondary URL</FieldLabel>
                         <EditableInput
                             id="secondary_url"
                             placeholder="https://example.com/webhooks_from_nango"

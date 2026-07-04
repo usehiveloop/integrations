@@ -19,7 +19,7 @@ Instantiate the `Nango` class:
 ```js
 import { Nango } from '@nangohq/node';
 
-const nango = new Nango({ secretKey: '<SECRET-KEY>' });
+const nango = new Nango({ apiKey: '<API-KEY>' });
 ```
 
 **Parameters**
@@ -27,8 +27,16 @@ const nango = new Nango({ secretKey: '<SECRET-KEY>' });
 <Expandable>
   <ResponseField name="config" type="object" required>
     <Expandable title="config" defaultOpen>
-      <ResponseField name="secretKey" type="string" required>
-        Get your secret key in the environment settings of the Nango UI. THis key should never be shared.
+      <ResponseField name="apiKey" type="string" required>
+        Your environment API key, found in **Environment Settings > API Keys** in the Nango UI. Sent as the bearer token for API calls. This key should never be shared.
+      </ResponseField>
+
+      <ResponseField name="secretKey" type="string" deprecated>
+        Deprecated alias for `apiKey`, kept for backward compatibility. Provide either `apiKey` or `secretKey`.
+      </ResponseField>
+
+      <ResponseField name="webhookSigningKey" type="string">
+        The environment's webhook signing key, found in **Environment Settings > Webhooks > Signing key**. Used by `verifyIncomingWebhookRequest` to validate incoming webhook signatures. Falls back to `secretKey` when omitted. On environments created after 2026-04-20 (or any environment that later rotated its API key), the signing key differs from the API key, so set this explicitly to verify webhooks.
       </ResponseField>
 
       <ResponseField name="host" type="string">
@@ -141,10 +149,7 @@ await nango.getIntegration(<INTEGRATION-ID>);
 Create a new integration.
 
 ```js
-await nango.createIntegration({ provider: <PROVIDER-ID>, unique_key: <UNIQUE_KEY>, [...] });
-
-// Deprecated
-await nango.createIntegration(<PROVIDER-ID>, <INTEGRATION-ID>);
+await nango.createIntegration({ provider: '<PROVIDER-ID>', unique_key: '<UNIQUE_KEY>' });
 ```
 
 **Parameters**
@@ -164,6 +169,14 @@ await nango.createIntegration(<PROVIDER-ID>, <INTEGRATION-ID>);
 
     <ResponseField name="credentials" type="Record<string, string>">
         The credentials to include depend on the specific integration that you want to create.
+    </ResponseField>
+
+    <ResponseField name="integration_config" type="Record<string, string>">
+        Provider-specific configuration for providers with an `integration_config` schema (e.g. `private-api-generic`, `aws-sigv4`). See the provider's integration page for fields.
+    </ResponseField>
+
+    <ResponseField name="forward_webhooks" type="boolean">
+        Whether to forward webhooks received for this integration. Defaults to `true`.
     </ResponseField>
 </Expandable>
 
@@ -185,28 +198,41 @@ await nango.createIntegration(<PROVIDER-ID>, <INTEGRATION-ID>);
 
 ### Update an integration
 
-Patch an integration, all fields are optional.
+Patch an integration. The first argument identifies the integration; all body fields are optional and only the fields you pass are updated.
 
 ```js
-await nango.updateIntegration({ uniqueKey: <UNIQUE_KEY> }, { [...body] });
-
-// Deprecated
-await nango.updateIntegration(<PROVIDER-ID>, <INTEGRATION-ID>);
+await nango.updateIntegration({ uniqueKey: '<UNIQUE_KEY>' }, { display_name: 'New name' });
 ```
 
 **Parameters**
 
 <Expandable>
+    <ResponseField name="uniqueKey" type="string" required>
+        The integration ID to update. Passed in the first argument.
+    </ResponseField>
+
     <ResponseField name="unique_key" type="string">
-        The integration ID.
+        A new integration ID, to rename the integration. Not allowed when the integration has active connections.
     </ResponseField>
 
     <ResponseField name="display_name" type="string">
         The display name of this integration
     </ResponseField>
 
+    <ResponseField name="forward_webhooks" type="boolean">
+        Whether to forward webhooks received for this integration.
+    </ResponseField>
+
     <ResponseField name="credentials" type="Record<string, string>">
-        The credentials to include depend on the specific integration that you want to create.
+        The credentials to include depend on the specific integration that you want to update.
+    </ResponseField>
+
+    <ResponseField name="integration_config" type="Record<string, string>">
+        Provider-specific configuration for providers with an `integration_config` schema. Only the fields you pass are updated.
+    </ResponseField>
+
+    <ResponseField name="custom" type="Record<string, string>">
+        Free-form custom values for providers without an `integration_config` schema.
     </ResponseField>
 </Expandable>
 
@@ -2076,9 +2102,14 @@ await nango.getProvider({ provider: <NAME> })
 
 ### Verify Webhook Signature
 
-Asserts that a Webhook is coming from Nango's backend.
+Asserts that a Webhook is coming from Nango's backend. Verification uses `webhookSigningKey` when the client is constructed with one, otherwise it falls back to `secretKey`. On environments created after 2026-04-20 (or any environment that later rotated its API key), the signing key differs from the API key, so construct the client with `webhookSigningKey` (from **Environment Settings > Webhooks > Signing key**).
 
 ```js
+const nango = new Nango({
+    apiKey: '<API-KEY>',
+    webhookSigningKey: '<WEBHOOK-SIGNING-KEY>'
+});
+
 async (req, res) => {
     const isValid = nango.verifyIncomingWebhookRequest(req.body, req.headers);
 }
